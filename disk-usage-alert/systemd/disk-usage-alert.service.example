@@ -9,7 +9,7 @@ Type=oneshot
 User=disk-alert
 Group=disk-alert
 
-ExecStart=/mnt/drive1/Projects/linux-automation-toolkit/disk-usage-alert/disk-usage-alert --config /mnt/drive1/Projects/linux-automation-toolkit/disk-usage-alert/config/disk-alert.conf
+ExecStart=/opt/linux-automation-toolkit/disk-usage-alert/disk-usage-alert --config /opt/linux-automation-toolkit/disk-usage-alert/config/disk-alert.conf
 
 StandardOutput=journal
 StandardError=journal

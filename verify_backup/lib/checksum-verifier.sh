@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 verify_checksums() {
     local archive="$1"
     local extract_dir="$2"

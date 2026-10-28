@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 restore_archive() {
     local archive="$1"
 

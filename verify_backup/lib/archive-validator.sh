@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 validate_archive() {
     local archive="$1"
     local member

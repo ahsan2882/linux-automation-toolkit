@@ -4,3 +4,9 @@
 !example.conf
 .vscode/
 *.sum
+*.lock
+*.service
+!*.service.example
+
+
+disk-usage-alert/disk-usage-alert
