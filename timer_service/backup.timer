@@ -1,0 +1,11 @@
+# Create at /etc/systemd/system/backup.timer
+[Unit]
+Description=Run Linux Backup Nightly
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=backup.service
+
+[Install]
+WantedBy=timers.target

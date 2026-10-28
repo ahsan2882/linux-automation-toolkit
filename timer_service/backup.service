@@ -1,0 +1,9 @@
+# Create at /etc/systemd/system/backup.service
+[Unit]
+Description=Linux Backup Tool
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/mnt/drive1/Projects/linux-automation-toolkit/create_backup/backup.sh
+User=ahsan

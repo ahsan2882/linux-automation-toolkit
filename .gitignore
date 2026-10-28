@@ -1,0 +1,6 @@
+.env
+.env.*
+*.conf
+!example.conf
+.vscode/
+*.sum

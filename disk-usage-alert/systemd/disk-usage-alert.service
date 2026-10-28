@@ -1,0 +1,25 @@
+[Unit]
+Description=Nightly Disk Usage Alert
+Documentation=README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=disk-alert
+Group=disk-alert
+
+ExecStart=/mnt/drive1/Projects/linux-automation-toolkit/disk-usage-alert/disk-usage-alert --config /mnt/drive1/Projects/linux-automation-toolkit/disk-usage-alert/config/disk-alert.conf
+
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true

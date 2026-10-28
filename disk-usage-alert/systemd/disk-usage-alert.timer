@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly Disk Usage Alert Schedule
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=5min
+Unit=disk-usage-alert.service
+
+[Install]
+WantedBy=timers.target
