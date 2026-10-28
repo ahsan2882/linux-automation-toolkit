@@ -14,7 +14,7 @@ import (
 func main() {
 	configPath := flag.String(
 		"config",
-		"config/disk-usage-alert.conf",
+		"config/disk-alert.conf",
 		"Path to the disk alert configuration file",
 	)
 	flag.Parse()

@@ -5,6 +5,6 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/linux-automation-toolkit/create_backup/backup.sh
+ExecStart=/opt/linux-automation-toolkit/create-backup/backup.sh
 ExecStartPost=/opt/linux-automation-toolkit/verify-backup/verify.sh
 User=backupuser

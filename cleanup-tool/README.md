@@ -1,195 +1,73 @@
-# Linux Cleanup Tool
+# Cleanup Tool
 
-A configurable Bash utility for identifying and removing old temporary files, logs, and package cache files on Linux systems. Supports configurable retention periods, dry-run previews, and explicit execution mode to help prevent accidental deletion.
+A configurable Bash utility that finds files older than a per-path retention period. It defaults to dry-run mode; files are deleted only when `--execute` is explicitly supplied.
 
 ## Features
 
-- **Dry-run by default:** Preview files eligible for deletion without modifying anything.
-- **Configurable retention periods:** Set a different age threshold for each directory.
-- **Multiple cleanup paths:** Manage temporary directories, log directories, and package cache locations from a single configuration file.
-- **Safe filename handling:** Supports filenames containing spaces and other special characters.
-- **Regular files only:** Does not delete directories or follow symbolic links.
-- **Custom configuration:** Specify an alternative configuration file through a command-line argument.
-- **Execution summary:** Reports the number of files found, deleted, and failed.
+- Reads target paths and retention ages from a configuration file.
+- Shows candidate files before deletion.
+- Uses `find` with `-xdev` so the scan does not cross into other mounted filesystems.
+- Tracks found files, successful deletions, and failures.
+- Requires an explicit `--execute` flag to delete files.
 
-## Requirements
-
-- Linux operating system
-- Bash
-- GNU `find`
-- Standard command-line utilities, including `rm`
-
-## Project Structure
+## Files
 
 ```text
 cleanup-tool/
 ├── cleanup.sh
-├── cleanup.conf
-└── README.md
+├── cleanup.conf        # local configuration; create from example.conf
+└── example.conf
 ```
 
-## Configuration
+## Requirements
 
-Edit `cleanup.conf` to define the directories to scan and their retention periods.
+Linux with Bash and GNU `find`, `realpath`, `rm`, `date`, and common core utilities.
 
-### Configuration format
-
-```text
-DAYS|PATH
-```
-
-- `DAYS`: Minimum file age threshold in days.
-- `PATH`: Absolute path to the directory to scan.
-- Lines beginning with `#` are treated as comments.
-- Empty lines are ignored.
-
-### Example
+## Configure
 
 ```bash
-# Format: DAYS|PATH
-
-7|/tmp
-14|/var/tmp
-30|/var/log
-30|/var/cache/apt/archives
+cp example.conf cleanup.conf
+chmod 600 cleanup.conf
 ```
 
-This configuration makes files older than the specified thresholds eligible for deletion.
+Edit `cleanup.conf` using the exact syntax in `example.conf`. Each configuration entry identifies a path and the age in days beyond which files are eligible for cleanup. Review every path carefully; cleanup targets should be narrow, deliberate directories such as selected temporary, log, or cache locations.
 
-**Important:** Review all configured paths before executing the script. Cleaning system log directories or package caches can remove useful diagnostic data or interfere with applications. Prefer package-manager-specific cleanup commands for package caches when appropriate.
-
-## Installation
-
-Clone or copy the project to your preferred directory.
-
-Make the script executable:
-
-```bash
-chmod +x cleanup.sh
-```
-
-Review and customize `cleanup.conf` before running the utility.
+The script sources the configuration as Bash. Only use a configuration file you trust. Do not configure broad or critical paths such as `/`, `/home`, or a backup destination without a precise reason and careful review.
 
 ## Usage
 
-### Display help
-
-```bash
-./cleanup.sh --help
-```
-
-### Preview eligible files
-
-```bash
-./cleanup.sh --dry-run
-```
-
-Dry-run is the default mode, so this command is equivalent to running the script without arguments:
+Preview the files that would be removed:
 
 ```bash
 ./cleanup.sh
 ```
 
-Example output:
-
-```text
-Mode: DRY RUN — no files will be deleted.
-Configuration: /path/to/cleanup.conf
-
-Scanning: /tmp (older than 7 days)
-WOULD DELETE: /tmp/old-file.tmp
-
--------------------- Summary --------------------
-Files found:   1
-Files deleted: 0 (dry-run mode)
-Failures:      0
-```
-
-The output lists matching files without deleting them.
-
-### Execute cleanup
-
-After reviewing the dry-run results, execute the cleanup:
+Perform deletion:
 
 ```bash
-sudo ./cleanup.sh --execute
+./cleanup.sh --execute
 ```
 
-The script attempts to remove each eligible file and reports the result.
+Use `--help` only if supported by the current script version; otherwise inspect `./cleanup.sh` for accepted arguments. The primary supported modes are default dry-run and `--execute`.
 
-Use `sudo` only when the configured directories require elevated privileges. Files deleted with elevated privileges may not be recoverable.
+## How it works
 
-### Use a custom configuration file
+For each configured path, the script resolves and validates the target, finds regular files older than the configured number of days without crossing filesystem boundaries, and prints the candidates. In dry-run mode it leaves files unchanged. In execute mode it attempts to delete each candidate and reports a summary.
 
-```bash
-./cleanup.sh --dry-run --config /etc/cleanup/cleanup.conf
-```
+The age test uses `find -mtime`, which measures age in 24-hour periods; it is not calendar-date retention.
 
-Execute using the same configuration:
+## Safety
 
-```bash
-sudo ./cleanup.sh --execute --config /etc/cleanup/cleanup.conf
-```
+- Always run dry-run first and read the complete candidate list.
+- Confirm the path is correct and any target filesystem is mounted as expected.
+- Do not assume a log/cache/temp path is safe to delete without checking the applications that use it.
+- The script deletes files, not a complete policy-managed cache or log rotation configuration.
+- Test with a small disposable directory before applying a configuration to important paths.
+- Keep backups outside any paths managed by this tool.
 
-## How It Works
+## Troubleshooting
 
-For each valid configuration entry, the script:
-
-1. Reads the retention period and directory path.
-2. Validates the configuration entry.
-3. Checks whether the target directory exists.
-4. Uses `find` to identify regular files older than the configured threshold.
-5. Prints matching paths in dry-run mode or removes them in execution mode.
-6. Reports a summary after processing the configuration.
-
-### File selection
-
-The script uses the following command internally:
-
-```bash
-find "$path" -type f -mtime "+$days" -print0
-```
-
-- `-type f`: Matches regular files only.
-- `-mtime "+$days"`: Matches files older than the specified age according to `find`'s modification-time rounding.
-- `-print0`: Separates filenames with null characters to safely handle spaces and newlines.
-- Symbolic links are not followed by default.
-
-The search is recursive, so eligible files in subdirectories are also considered.
-
-## Command-Line Options
-
-| Option          | Description                                   |
-| --------------- | --------------------------------------------- |
-| `--dry-run`     | Preview eligible files without deleting them. |
-| `--execute`     | Delete eligible files.                        |
-| `--config FILE` | Use an alternative configuration file.        |
-| `--help`, `-h`  | Display usage information.                    |
-
-If both `--dry-run` and `--execute` are provided, the last option takes precedence.
-
-## Safety Considerations
-
-- Always run a dry-run before executing cleanup.
-- Use absolute paths in the configuration.
-- Avoid broad or sensitive paths such as `/`, `/home`, or application data directories unless their contents have been carefully reviewed.
-- Review log retention requirements before including `/var/log`.
-- Do not assume that every file under a package cache directory is safe to remove manually.
-- Keep important logs and backups outside directories targeted for cleanup.
-- The script does not delete directories, but it can delete files inside nested directories.
-- The script does not currently enforce a path allowlist or protect against changes to files between scanning and deletion.
-
-## Possible Enhancements
-
-- Add an allowlist of permitted cleanup directories.
-- Support exclusion patterns for specific files and subdirectories.
-- Add a configurable maximum number of files to delete per run.
-- Report reclaimed disk space.
-- Integrate with systemd services and timers for scheduled cleanup.
-- Add logging to a dedicated log file or the systemd journal.
-- Add a confirmation prompt before destructive execution.
-- Use package-manager-specific cleanup commands where appropriate.
-
-## License
-
-Specify a license before distributing or publishing this project. If no license is provided, standard copyright restrictions apply by default.
+- **Invalid configuration:** compare the file with `example.conf`; check delimiters, quoting, and numeric day values.
+- **No files found:** confirm the path exists, the retention period is correct, and files are older than the configured threshold.
+- **Deletion failed:** check ownership, permissions, immutable attributes, and whether a file is in use.
+- **Unexpected scan scope:** check mount boundaries and the configured path; `-xdev` prevents traversal onto other filesystem devices but does not replace careful path selection.

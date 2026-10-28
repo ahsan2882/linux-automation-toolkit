@@ -1,120 +1,153 @@
 # Linux Automation Toolkit
 
-A collection of small, configurable tools for automating routine Linux administration: backups, backup verification, disk monitoring, drive mounting, cleanup, and system health reporting. Most tools are Bash scripts; the disk alert is a dependency-free Go program. Scheduling is handled by systemd services and timers.
+A collection of Linux administration utilities for creating and restoring backups, verifying backup artifacts, monitoring disk capacity, mounting configured drives, cleaning old files, and generating system reports. Most tools are Bash scripts; `disk-usage-alert` is a Go application. Optional systemd units automate scheduled tasks.
 
-## Tools
+## Repository contents
 
-| Tool                                                | Language | Purpose                                                                                                                                   |
-| --------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [`create_backup`](create_backup/)                   | Bash     | Creates timestamped `.tar.gz` backups with progress display, exclusion patterns, archive validation, and rotation. Includes `restore.sh`. |
-| [`verify_backup`](verify_backup/)                   | Bash     | Checks the latest backup's integrity and test-extracts it into a temporary workspace without touching the original locations.             |
-| [`disk-usage-alert`](disk-usage-alert/)             | Go       | Checks mount points against a usage threshold and sends an SMTP email alert when it is reached.                                           |
-| [`check-drive-mount`](check-drive-mount/)           | Bash     | Mounts configured drives (by UUID) at boot if they are not already mounted.                                                               |
-| [`cleanup-tool`](cleanup-tool/)                     | Bash     | Removes old files from temp, log, and package-cache directories with per-path retention. Dry-run by default.                              |
-| [`generate-system-report`](generate-system-report/) | Bash     | Prints a colored system health report: CPU, memory, disk, uptime, top processes, failed services.                                         |
-| [`timer_service`](timer_service/)                   | systemd  | Example `backup.service` and `backup.timer` that run the backup nightly at 02:00.                                                         |
+| Path                                                 | Purpose                                                                                                                                                    |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`create-backup/`](create-backup/)                   | Creates timestamped `.tar.gz` archives, SHA-256 sidecar files, and archive file lists; applies retention; includes an interactive restore utility.         |
+| [`verify-backup/`](verify-backup/)                   | Validates the newest matching archive, checks its checksum and recorded file list, then compares a sample of extracted files with configured live sources. |
+| [`lib/`](lib/)                                       | Shared archive validation, temporary extraction, and comparison functions used by backup verification and restore.                                         |
+| [`disk-usage-alert/`](disk-usage-alert/)             | Checks configured mount points and sends an SMTP email if a filesystem reaches the configured threshold.                                                   |
+| [`check-drive-mount/`](check-drive-mount/)           | Mounts configured filesystems by UUID when they are not already mounted.                                                                                   |
+| [`cleanup-tool/`](cleanup-tool/)                     | Finds old files in explicitly configured paths. Dry-run is the default; deletion requires `--execute`.                                                     |
+| [`generate-system-report/`](generate-system-report/) | Prints a point-in-time system health report.                                                                                                               |
+| [`timed-backup-service/`](timed-backup-service/)     | Example systemd service and timer for running a backup followed by verification.                                                                           |
 
-Each tool has its own README with full installation and configuration details.
-
-## Repository layout
-
-```text
-.
-├── create_backup/          # backup.sh, restore.sh, example.conf
-├── verify_backup/          # verify.sh, lib/ (validator, restore manager, checksum verifier)
-├── disk-usage-alert/       # Go source, config/, systemd/ units
-├── check-drive-mount/      # mount-configured-drives.sh, example.conf
-├── cleanup-tool/           # cleanup.sh, example.conf
-├── generate-system-report/ # system-report.sh
-└── timer_service/          # backup.service, backup.timer
-```
+Each tool has a dedicated README where available. Read it before configuring or scheduling that tool.
 
 ## Requirements
 
-- Linux with systemd (Ubuntu/Debian recommended)
-- Bash and GNU coreutils, `tar`, `gzip`, `find`
-- `pv`, `flock`, `findmnt`, `gawk` for the backup tools
-- Go 1.24+ to build `disk-usage-alert`
-- Optional: `sysstat` (`mpstat`) for live CPU usage in the system report
-- Root privileges for the tools that mount drives or install system services
+- Linux; Ubuntu/Debian are the primary documented examples.
+- Bash and common GNU/Linux utilities.
+- `systemd` for the supplied service/timer units.
+- `tar`, `gzip`, `find`, `sort`, `realpath`, `flock`, `sha256sum`, `diff`, `cmp`, `grep`, and `shuf` for the relevant backup tools.
+- `pv` for the backup progress display.
+- Go 1.24 or newer to build `disk-usage-alert`.
+- `sysstat` is optional for live CPU utilization in the system report.
+- Root/sudo access is required for system-wide service installation and normally for mounting filesystems. Run other tools with the least privileges that can access their configured paths.
 
-## Getting started
+Install common utilities on Ubuntu/Debian:
 
 ```bash
-git clone <your-repo-url> linux-automation-toolkit
+sudo apt update
+sudo apt install -y bash coreutils findutils tar gzip util-linux diffutils pv
+```
+
+## Get started
+
+Clone the repository and enter it:
+
+```bash
+git clone <repository-url> linux-automation-toolkit
 cd linux-automation-toolkit
 ```
 
-### 1. Configure
+Replace `<repository-url>` with your actual remote URL.
 
-Real `.conf` files are git-ignored (only `example.conf` is tracked) because they may hold credentials and machine-specific paths. For each tool, copy the example and edit it:
+### Configure each tool
+
+Copy the tracked example configuration to the exact filename expected by the corresponding script:
 
 ```bash
-cp create_backup/example.conf          create_backup/backup.conf
-cp verify_backup/example.conf          verify_backup/verify.conf
-cp cleanup-tool/example.conf           cleanup-tool/cleanup.conf
-cp check-drive-mount/example.conf      check-drive-mount/drive-mount.conf
+cp create-backup/example.conf create-backup/backup.conf
+cp verify-backup/example.conf verify-backup/verify.conf
+cp cleanup-tool/example.conf cleanup-tool/cleanup.conf
+cp check-drive-mount/example.conf check-drive-mount/drive-mount.conf
 cp disk-usage-alert/config/example.conf disk-usage-alert/config/disk-alert.conf
 ```
 
-Keep the filename each tool's README expects, and restrict permissions on any file containing secrets:
+Review every path, UUID, retention setting, and threshold before running anything. Configuration files may contain machine-specific paths or credentials; do not commit real credentials. Restrict access to secret-bearing files:
 
 ```bash
 chmod 600 disk-usage-alert/config/disk-alert.conf
 ```
 
-### 2. Run a tool
+Some configuration files use Bash arrays and are sourced by Bash scripts. Treat them as trusted shell configuration, not as safe files to load from an untrusted source.
+
+### Run the tools
 
 ```bash
-# Backup, then verify it
-./create_backup/backup.sh
-./verify_backup/verify.sh
+# Create a backup (requires create-backup/backup.conf)
+./create-backup/backup.sh
 
-# Restore an archive to a directory
-./create_backup/restore.sh /path/to/backup_YYYY-MM-DD_HH-MM-SS.tar.gz /path/to/destination
+# Validate and preview an archive before restoring
+./create-backup/restore.sh --dry-run /path/to/backup_YYYY-MM-DD_HH-MM-SS.tar.gz
 
-# Preview cleanup (default), then actually delete
+# Restore to a destination directory (interactive confirmation)
+./create-backup/restore.sh /path/to/backup_YYYY-MM-DD_HH-MM-SS.tar.gz /path/to/restore
+
+# Verify the newest matching backup
+./verify-backup/verify.sh
+
+# Preview cleanup; deletion is opt-in
 ./cleanup-tool/cleanup.sh
 ./cleanup-tool/cleanup.sh --execute
 
-# System health report
+# Mount configured UUIDs
+sudo ./check-drive-mount/mount-configured-drives.sh
+
+# Generate a system report
 ./generate-system-report/system-report.sh
 
-# Disk alert
-cd disk-usage-alert && go build -o disk-usage-alert ./cmd/disk-alert
+# Build and run disk-usage-alert
+cd disk-usage-alert
+go build -o disk-usage-alert ./cmd/disk-alert
 ./disk-usage-alert --config config/disk-alert.conf
 ```
 
-### 3. Schedule with systemd
+The drive-mount and disk-alert commands depend on their configuration files and environment. See each tool's README for required setup and limitations.
 
-`timer_service/` contains a ready-made nightly backup unit pair. Edit `ExecStart=` and `User=` in `backup.service` to match your paths, then install:
+## Screenshots
+
+![Successful backup](./screenshots/backup-success.png)
+![Cleanup dry run](./screenshots/cleanup-dry-run.png)
+![Disk Usage Check](./screenshots/disk-usage-alert.png)
+![Disk Usage Alert](./screenshots/disk-alert.png)
+![System report](./screenshots/system-report.png)
+![Backup verification PASS](./screenshots/verify-backup-PASS.png)
+![Backup verification FAIL](./screenshots/verify-backup-FAIL.png)
+
+## Scheduling backups
+
+`timed-backup-service/backup.service` and `backup.timer` are examples, not portable drop-in units: the service contains absolute paths and a specific user. Edit `ExecStart`, `ExecStartPost`, and `User` to match the checkout and account on the target machine. Verify that both scripts work manually as that user before enabling the timer.
 
 ```bash
-sudo cp timer_service/backup.service timer_service/backup.timer /etc/systemd/system/
+sudo install -m 644 timed-backup-service/backup.service /etc/systemd/system/backup.service
+sudo install -m 644 timed-backup-service/backup.timer /etc/systemd/system/backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now backup.timer
 systemctl list-timers backup.timer
 ```
 
-The timer runs daily at 02:00 and uses `Persistent=true`, so a missed run (machine off) fires at next boot.
+Inspect scheduled execution with:
 
-The `disk-usage-alert/systemd/` and `check-drive-mount` directories follow the same pattern with their own service and timer files; see their READMEs.
+```bash
+sudo systemctl status backup.service --no-pager -l
+sudo journalctl -u backup.service -n 100 --no-pager
+```
 
-## Recommended workflow
+The timer is configured for 02:00 local system time and `Persistent=true`; a missed run can be triggered when the timer becomes active again. The service runs backup creation and then verification. Ensure the verification configuration matches the backup configuration.
 
-1. `check-drive-mount` mounts backup and data drives at boot.
-2. `create_backup` runs nightly through `backup.timer`.
-3. `verify_backup` confirms the newest archive is intact and extractable.
-4. `disk-usage-alert` warns by email before volumes fill up.
-5. `cleanup-tool` reclaims space from old temp files, logs, and package caches.
-6. `generate-system-report` gives a quick health snapshot on demand.
+## Suggested operating sequence
 
-## Safety notes
+1. Confirm configured data and backup filesystems are mounted.
+2. Create a backup on a separate physical device or remote destination.
+3. Verify the archive, checksum, file list, and sampled contents.
+4. Monitor filesystem usage so the backup destination does not fill unexpectedly.
+5. Review cleanup dry-run output before enabling deletion.
+6. Periodically perform a restore into an isolated destination and inspect the restored files.
 
-- `cleanup-tool` only previews unless you pass `--execute`. Review the dry-run output and your retention paths first.
-- Keep backups on a separate physical disk from the source data.
-- Test restores regularly. A backup that has never been verified is an assumption.
-- Never commit real configuration files or SMTP app passwords.
+## Safety and operational notes
+
+- A backup on the same physical disk as the source does not protect against disk failure. Prefer a separate disk or off-site/remote copy.
+- A successful verification is not a substitute for a full restore test. The current verifier samples live source files and skips files that have changed since the archive timestamp.
+- The restore script asks for confirmation, but extracted files can overwrite same-named files in the destination. Use a new, empty directory when possible.
+- Cleanup is destructive when `--execute` is used. Review configured paths and age thresholds first.
+- Confirm a configured drive is actually mounted at the intended mount point before writing backups. A path on an unmounted drive can silently refer to the underlying root filesystem; the backup script includes a root-filesystem guard but does not independently confirm a specific device UUID.
+- Never commit passwords, app passwords, private keys, or real machine-specific configuration.
+- Test systemd units with `systemd-analyze verify` and inspect the journal after installation.
 
 ## License
 

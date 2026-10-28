@@ -18,6 +18,10 @@ Options:
 EOF
 }
 
+log() {
+    printf '[%s] %s\n' "$(date '+%F %T')" "$*"
+}
+
 DRY_RUN=false
 
 if [[ "${1:-}" == "--dry-run" ]]; then

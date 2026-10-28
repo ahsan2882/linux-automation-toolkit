@@ -1,218 +1,134 @@
-# Backup Restore Verifier
+# Backup Verifier
 
-A Bash utility for checking the integrity of timestamped `.tar.gz` backups and testing that they can be extracted into a temporary workspace.
+A Bash utility that checks the newest timestamped backup archive produced by `create-backup`. It validates archive structure, verifies its SHA-256 sidecar and recorded member list, then extracts a random sample and compares those files with configured live source directories.
 
-The verifier is intended to validate backups without restoring files to their original locations.
+This is a verification aid, not a full disaster-recovery test.
 
-## Features
+## Verification stages
 
-- Finds the latest backup matching the configured naming pattern.
-- Checks gzip integrity and tar archive structure.
-- Validates archive member paths before extraction.
-- Extracts the archive into a uniquely named temporary directory.
-- Compares the archive with the extracted files.
-- Logs verification results and returns a success or failure exit code.
-- Cleans up temporary files after verification, according to the configured failure-retention setting.
+1. Finds the newest archive matching `PREFIX_YYYY-MM-DD_HH-MM-SS.tar.gz`.
+2. Tests gzip integrity and reads the tar member list.
+3. Rejects absolute archive paths and `..` path components.
+4. Verifies the archive against its `.sha256` sidecar.
+5. Compares the archive's member names with its `.list` sidecar.
+6. Extracts up to `SAMPLE_SIZE` files into a private temporary workspace.
+7. Compares sampled extracted files with their current source files, skipping source files that are missing or newer than the archive.
+8. Logs the result and removes the workspace unless configured to preserve it after failure.
 
-## Project structure
+## Files and dependencies
 
 ```text
-backup-restore-verify/
-├── verify.conf
+verify-backup/
 ├── verify.sh
-├── lib/
-│   ├── archive-validator.sh
-│   ├── restore-manager.sh
-│   └── checksum-verifier.sh
-└── logs/
-    └── verify.log
+├── verify.conf          # local configuration; create from example.conf
+├── example.conf
+└── .verify.lock          # runtime lock file
+../lib/
+├── archive-validator.sh
+├── restore-manager.sh
+└── checksum-verifier.sh
 ```
 
-`verify.sh` is the entry point. The scripts in `lib/` contain archive validation, temporary extraction, and content-comparison functions.
+Requirements include Bash, GNU tar, gzip, `find`, `sort`, `head`, `wc`, `sha256sum`, `realpath`, `mktemp`, `flock`, `shuf`, `cmp`, `diff`, and `grep`.
 
-## Requirements
-
-The verifier is designed for Linux and expects Bash and GNU command-line utilities, including:
-
-- `tar` (GNU tar)
-- `gzip`
-- `find`
-- `sort`
-- `head`
-- `wc`
-- `sha256sum` (if used by the configured verification implementation)
-- `realpath`
-- `mktemp`
-- `flock`
-- `tee`
-- `diff` (if used by the configured verification implementation)
-
-On Ubuntu, install the common dependencies with:
+On Ubuntu/Debian:
 
 ```bash
 sudo apt update
-sudo apt install tar gzip findutils coreutils util-linux diffutils
+sudo apt install -y bash tar gzip findutils coreutils util-linux diffutils grep
 ```
 
-Check the commands used by your current scripts and install any missing utilities.
-
-## Configuration
-
-Edit `verify.conf` before running the verifier. Example:
+## Configure
 
 ```bash
-#!/usr/bin/env bash
-
-BACKUP_DIR="/media/backup"
-BACKUP_PREFIX="backup"
-TEMP_DIR="/tmp"
-VERIFY_LOG="logs/verify.log"
-KEEP_TEMP_ON_FAILURE=false
+cp example.conf verify.conf
+chmod 600 verify.conf
 ```
 
-| Setting                | Description                                                                                                        |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `BACKUP_DIR`           | Directory containing the backup archives.                                                                          |
-| `BACKUP_PREFIX`        | Prefix used in backup filenames.                                                                                   |
-| `TEMP_DIR`             | Parent directory for the temporary extraction workspace. Ensure it has enough free space for the extracted backup. |
-| `VERIFY_LOG`           | Log file path. Relative paths are resolved from the project directory if implemented that way in `verify.sh`.      |
-| `KEEP_TEMP_ON_FAILURE` | When supported by the script, controls whether the temporary workspace is retained after a failed verification.    |
+Edit these settings in `verify.conf`:
 
-### Backup filename pattern
+| Setting                | Purpose                                                                                                          |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `BACKUP_DIR`           | Directory containing the backup archive and its sidecars.                                                        |
+| `BACKUP_PREFIX`        | Prefix used in archive filenames; should match `create-backup/backup.conf`.                                      |
+| `TEMP_DIR`             | Writable parent directory for temporary extraction. Choose a filesystem with enough space for the sampled files. |
+| `VERIFY_LOG`           | Writable log file path. Its parent directory is created if needed.                                               |
+| `KEEP_TEMP_ON_FAILURE` | `true` retains the temporary workspace after a failed run; `false` removes it.                                   |
+| `SAMPLE_SIZE`          | Positive integer number of files to sample.                                                                      |
+| `SOURCE_DIRS`          | Bash array of source directories corresponding to those included in the backup.                                  |
 
-The archive discovery logic expects names in this general format:
+The example configuration is the template for the required Bash array syntax. Keep `SOURCE_DIRS` consistent with the source directories used to create the backup. Since `verify.sh` sources the configuration, treat it as trusted shell code.
 
-```text
-backup_YYYY-MM-DD_HH-MM-SS.tar.gz
-```
+The default log path may require root privileges. Prefer a log location writable by the user or service account that runs the verifier.
 
-For example:
-
-```text
-backup_2026-10-26_21-00-00.tar.gz
-```
-
-Ensure the pattern in `verify.sh` matches the naming convention used by your backup script.
-
-## Setup
-
-From the project directory:
-
-```bash
-chmod +x verify.sh
-chmod +x lib/*.sh
-```
-
-Check the configuration and ensure the backup directory exists and is readable:
-
-```bash
-ls -ld /media/backup
-ls -lh /media/backup
-```
-
-Create the log directory if it does not already exist:
-
-```bash
-mkdir -p logs
-```
-
-If your configuration uses a log path under the project directory, ensure the current user can write to it.
-
-## Run verification
-
-From the project directory:
+## Run
 
 ```bash
 ./verify.sh
 ```
 
-The verifier selects the latest archive that matches the configured prefix and timestamp pattern. Review the console output and log file for the result.
-
-To inspect the log:
+Run from any directory by using its path:
 
 ```bash
-tail -n 100 logs/verify.log
+/path/to/linux-automation-toolkit/verify-backup/verify.sh
 ```
 
-Use the actual path configured by `VERIFY_LOG` if it differs from this example.
+The script uses a lock file in this directory to prevent concurrent verification runs. It selects only the newest matching archive; it does not iterate through every archive.
 
-## Verification workflow
+Inspect the configured log:
 
-1. **Locate an archive** matching the configured filename pattern.
-2. **Check gzip integrity** with `gzip -t`.
-3. **Inspect tar structure and paths** before extracting.
-4. **Extract into a temporary workspace** under `TEMP_DIR`.
-5. **Compare the archive with the extracted files** using the configured comparison implementation.
-6. **Report the result**, clean up temporary files, and exit with a status code.
+```bash
+tail -n 100 /path/to/your/verify.log
+```
 
-The verifier does **not** restore files to their original paths. Its extraction is for testing only.
+A successful exit status is `0`; validation or comparison failures return a non-zero status.
 
-## Exit status
+## Required sidecar files
 
-For use in scripts and automation, the intended exit statuses are:
+For an archive such as:
 
-- `0` — verification passed.
-- Non-zero — verification failed, configuration was invalid, or a required command/archive was unavailable.
+```text
+backup_2026-10-28_02-00-00.tar.gz
+```
 
-Confirm the exact behavior in `verify.sh`, especially if you modify its error handling.
+the verifier expects:
+
+```text
+backup_2026-10-28_02-00-00.tar.gz.sha256
+backup_2026-10-28_02-00-00.tar.gz.list
+```
+
+These are generated by `create-backup/backup.sh`. Do not rename or separate the files.
+
+## Safety and interpretation
+
+- Verification extracts sampled members into a temporary directory; it does not restore files to their original locations.
+- The checksum detects changes relative to the sidecar, but if an attacker or failure changes both the archive and its checksum file, the checksum alone does not establish authenticity. Store backups and manifests with appropriate access controls or use a separately protected copy.
+- The verifier checks only the newest matching archive.
+- Live-source comparison is sampled, not exhaustive. Files missing from the source or modified after the archive timestamp are skipped, so a successful result does not prove every archived file matches the original at backup time.
+- The path validator rejects absolute paths and `..` components but should not be treated as a complete sandbox for every unusual archive construct. Run verification with least privilege and use trusted archives.
+- A failed workspace can contain private data. Preserve it only when needed for diagnosis and protect its permissions.
 
 ## Troubleshooting
 
-### No matching archive found
+### No matching archives
 
-- Check `BACKUP_DIR` and `BACKUP_PREFIX`.
-- Confirm that filenames follow the expected timestamp pattern.
-- Verify that the backup directory is mounted and readable.
+Confirm `BACKUP_DIR`, `BACKUP_PREFIX`, and the exact timestamped filename format. Ensure the backup filesystem is mounted and readable.
 
-### Gzip or tar validation fails
+### Checksum or file-list failure
 
-The archive may be truncated, damaged, or not a valid gzip-compressed tar archive. Preserve the original archive and investigate before deleting or replacing it.
+Keep all artifacts unchanged. Check whether the archive or sidecar was modified, truncated, renamed, or copied incompletely. Re-run the backup only after investigating.
 
-You can run basic checks manually:
+### Source comparisons are skipped
 
-```bash
-gzip -t /media/backup/backup_2026-10-26_21-00-00.tar.gz
-tar -tzf /media/backup/backup_2026-10-26_21-00-00.tar.gz >/dev/null
-```
+Check `SOURCE_DIRS`, permissions, and whether source files have changed since the archive was created. A skipped sample does not count as a mismatch.
 
-Replace the example filename with the archive you want to inspect.
+### Temporary extraction fails
 
-### Verification takes too long
-
-Repeatedly running `tar -xOzf` for every file can be extremely slow because the archive may be decompressed and scanned many times. Prefer a single-pass archive comparison or another design that avoids rescanning the full archive for each member.
-
-Check the available space in the temporary directory:
+Check available space and write permissions:
 
 ```bash
 df -h /tmp
 ```
 
-For large archives, set `TEMP_DIR` to a filesystem with enough free space.
-
-### Comparison reports permission or mode differences
-
-Archive comparison may check metadata such as file modes as well as file contents. Extraction settings and the process `umask` can affect restored modes. Review the comparison output before concluding that file contents are corrupt.
-
-### Temporary workspace is retained or removed unexpectedly
-
-Check `KEEP_TEMP_ON_FAILURE` and the cleanup logic in `verify.sh`. Retaining failed workspaces can help debugging, but they may consume significant disk space and can contain private data.
-
-## Safety notes
-
-- Keep the verifier's temporary directory restricted to trusted users.
-- Ensure the archive path-validation step runs before extraction.
-- Do not extract untrusted archives without reviewing the validation logic.
-- Verification does not replace a tested backup and disaster-recovery plan.
-- A successful integrity check cannot prove that a backup contains every file you intended to back up; it only verifies the checks performed by this utility.
-- Consider periodically testing a restore into an isolated environment.
-
-## Limitations
-
-- The verifier checks only the archive selected by its discovery logic, typically the latest matching archive.
-- Results depend on the correctness of the archive path validation and comparison functions.
-- If the verifier does not generate and compare a trusted checksum manifest, it should not be described as providing an independent checksum-based proof of every file's contents.
-- Filenames containing unusual characters, duplicate archive member names, symbolic links, and hard links require careful handling in the validator and comparison implementation.
-
-## License
-
-Add the license that applies to this project before publishing or distributing it.
+Use the actual `TEMP_DIR` if it differs from `/tmp`.
