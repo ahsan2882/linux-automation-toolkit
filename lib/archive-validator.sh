@@ -45,3 +45,47 @@ validate_archive() {
 
     return 0
 }
+
+verify_archive_hash() {
+    local archive="$1"
+    local hash_file="${archive}.sha256"
+
+    if [[ ! -f "$hash_file" ]]; then
+        log "ERROR: Missing checksum file: $hash_file"
+        return 1
+    fi
+
+    log "Verifying archive checksum..."
+
+    if ! (cd -- "$(dirname -- "$archive")" &&
+          sha256sum -c --quiet -- "$(basename -- "$hash_file")"); then
+        log "ERROR: Archive checksum does not match the one recorded at backup time."
+        return 1
+    fi
+}
+
+verify_file_list() {
+    local archive="$1"
+    local list_file="${archive}.list"
+    local differences
+
+    if [[ ! -f "$list_file" ]]; then
+        log "ERROR: Missing file list: $list_file"
+        return 1
+    fi
+
+    log "Comparing archive contents with the list recorded at backup time..."
+
+    differences="$(
+        diff <(LC_ALL=C sort -- "$list_file") \
+             <(tar -tzf "$archive" | LC_ALL=C sort) | head -n 20
+    )" || true
+
+    if [[ -n "$differences" ]]; then
+        log "ERROR: File list differs (first differences below)."
+        printf '%s\n' "$differences" >&2
+        return 1
+    fi
+
+    log "File count: $(wc -l < "$list_file") entries."
+}

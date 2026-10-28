@@ -19,15 +19,18 @@ source "$CONFIG_FILE"
 : "${BACKUP_PREFIX:?BACKUP_PREFIX is required}"
 : "${TEMP_DIR:?TEMP_DIR is required}"
 : "${VERIFY_LOG:?VERIFY_LOG is required}"
+: "${SAMPLE_SIZE:?SAMPLE_SIZE is required}"
+: "${SOURCE_DIRS[0]:?SOURCE_DIRS is required}"
+: "${KEEP_TEMP_ON_FAILURE:?KEEP_TEMP_ON_FAILURE is required}"
+
+if [[ ! "$SAMPLE_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'ERROR: SAMPLE_SIZE must be a positive integer.\n' >&2
+    exit 1
+fi
 
 if [[ ! "$KEEP_TEMP_ON_FAILURE" =~ ^(true|false)$ ]]; then
     printf 'ERROR: KEEP_TEMP_ON_FAILURE must be true or false.\n' >&2
     exit 1
-fi
-
-# Resolve log path relative to this script when not absolute.
-if [[ "$VERIFY_LOG" != /* ]]; then
-    VERIFY_LOG="${SCRIPT_DIR}/${VERIFY_LOG}"
 fi
 
 mkdir -p -- "$(dirname -- "$VERIFY_LOG")"
@@ -48,7 +51,7 @@ for library in \
     restore-manager.sh \
     checksum-verifier.sh
 do
-    library_path="${SCRIPT_DIR}/lib/${library}"
+    library_path="${SCRIPT_DIR}/../lib/${library}"
 
     if [[ ! -f "$library_path" ]]; then
         log "ERROR: Missing library: $library_path"
@@ -61,7 +64,7 @@ done
 
 # Check required commands
 for command_name in \
-    tar gzip find sort head wc sha256sum realpath mktemp
+    tar gzip find sort head wc sha256sum realpath mktemp shuf cmp diff grep
 do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         log "ERROR: Required command not found: $command_name"
@@ -135,21 +138,34 @@ fi
 
 log "PASS: Archive integrity and path validation."
 
-# Stage 2: Extract into an isolated temporary directory
-if ! restore_archive "$ARCHIVE"; then
-    log "FAIL: Extraction failed."
+# Stage 2: Archive file matches the checksum recorded at backup time
+if ! verify_archive_hash "$ARCHIVE"; then
+    log "FAIL: Archive checksum verification failed."
     exit 1
 fi
 
-log "PASS: Archive extracted successfully."
+log "PASS: Archive checksum."
 
-# Stage 3: Verify counts, checksums, and archived contents
-if ! verify_checksums "$ARCHIVE" "$EXTRACT_DIR"; then
-    log "FAIL: Content verification failed."
+# Stage 3: Archive holds exactly the files recorded at backup time
+if ! verify_file_list "$ARCHIVE"; then
+    log "FAIL: File list verification failed."
     exit 1
 fi
 
-log "PASS: File counts and content verification."
+log "PASS: File list and count."
+
+# Stage 4: Extract a random sample and compare it with the live files
+if ! restore_sample "$ARCHIVE"; then
+    log "FAIL: Sample extraction failed."
+    exit 1
+fi
+
+if ! verify_sample "$ARCHIVE"; then
+    log "FAIL: Sample content verification failed."
+    exit 1
+fi
+
+log "PASS: Sample content verification."
 log "PASS: Backup verification completed."
 log "=================================================="
 

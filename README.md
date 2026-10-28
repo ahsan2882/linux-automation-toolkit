@@ -118,6 +118,6 @@ The `disk-usage-alert/systemd/` and `check-drive-mount` directories follow the s
 
 ## License
 
-### MIT License
+MIT License
 
-### Copyright (c) 2026 Ahsan Shahid
+Copyright (c) 2026 Ahsan Shahid

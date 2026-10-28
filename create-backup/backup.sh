@@ -125,11 +125,17 @@ if [[ -e "$ARCHIVE" ]]; then
 fi
 
 TEMP_ARCHIVE="$(mktemp "${BACKUP_REAL}/.${BACKUP_PREFIX}.XXXXXX")"
+HASH_FILE="${TEMP_ARCHIVE}.sha256"
+LIST_FILE="${TEMP_ARCHIVE}.list"
 
 cleanup() {
-    if [[ -n "${TEMP_ARCHIVE:-}" && -f "$TEMP_ARCHIVE" ]]; then
-        rm -f -- "$TEMP_ARCHIVE"
-    fi
+    local leftover
+
+    for leftover in "${TEMP_ARCHIVE:-}" "${HASH_FILE:-}" "${LIST_FILE:-}"; do
+        if [[ -n "$leftover" && -f "$leftover" ]]; then
+            rm -f -- "$leftover"
+        fi
+    done
 }
 trap cleanup EXIT
 
@@ -149,12 +155,15 @@ log "Progress below is an estimate; tar adds archive metadata."
 # Stream tar -> progress monitor -> gzip.
 # pv displays a live progress bar, throughput, elapsed time,
 # and ETA. The percentage is approximate because tar adds headers.
-if ! tar --create --file=- \
+if ! tar --create --file=- --verbose --index-file="$LIST_FILE" \
     "${EXCLUDE_ARGS[@]}" \
     "${TAR_ARGS[@]}" |
     pv --progress --timer --eta --rate --bytes \
        --size "$TOTAL_BYTES" |
-    gzip "-${COMPRESSION_LEVEL}" > "$TEMP_ARCHIVE"; then
+    gzip "-${COMPRESSION_LEVEL}" |
+    tee -- "$TEMP_ARCHIVE" |
+    sha256sum |
+    awk -v name="$(basename -- "$ARCHIVE")" '{ print $1 "  " name }' > "$HASH_FILE"; then
     log "ERROR: Backup creation failed. Existing backups preserved."
     exit 1
 fi
@@ -168,7 +177,11 @@ fi
 
 # Publish completed archive atomically on the same filesystem
 mv -- "$TEMP_ARCHIVE" "$ARCHIVE"
+mv -- "$HASH_FILE" "${ARCHIVE}.sha256"
+mv -- "$LIST_FILE" "${ARCHIVE}.list"
 TEMP_ARCHIVE=""
+HASH_FILE=""
+LIST_FILE=""
 
 log "Backup created and validated: $ARCHIVE"
 
@@ -185,7 +198,8 @@ if (( ${#BACKUPS[@]} > RETENTION_COUNT )); then
     for (( i = RETENTION_COUNT; i < ${#BACKUPS[@]}; i++ )); do
         OLD_BACKUP="${BACKUP_REAL}/${BACKUPS[$i]}"
 
-        if rm -- "$OLD_BACKUP"; then
+                if rm -- "$OLD_BACKUP" &&
+           rm -f -- "${OLD_BACKUP}.sha256" "${OLD_BACKUP}.list"; then
             log "Removed old backup: ${BACKUPS[$i]}"
         else
             log "ERROR: Could not remove old backup: $OLD_BACKUP"
