@@ -101,12 +101,32 @@ The drive-mount and disk-alert commands depend on their configuration files and 
 
 ## Screenshots
 
+### Successful backup
+
 ![Successful backup](./screenshots/backup-success.png)
+
+### Cleanup dry run
+
 ![Cleanup dry run](./screenshots/cleanup-dry-run.png)
+
+### Disk usage check
+
 ![Disk Usage Check](./screenshots/disk-usage-alert.png)
+
+### Disk usage alert
+
 ![Disk Usage Alert](./screenshots/disk-alert.png)
+
+### System report
+
 ![System report](./screenshots/system-report.png)
+
+### Backup verification PASS
+
 ![Backup verification PASS](./screenshots/verify-backup-PASS.png)
+
+### Backup verification FAIL
+
 ![Backup verification FAIL](./screenshots/verify-backup-FAIL.png)
 
 ## Scheduling backups
