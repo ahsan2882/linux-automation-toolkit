@@ -26,7 +26,7 @@ section() {
 printf '%bSYSTEM REPORT%b\n' "$BOLD" "$RESET"
 printf 'Hostname: %s\n' "$(hostname)"
 printf 'Date:     %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')"
-printf 'OS:       %s\n' "$(. /etc/os-release && echo "$PRETTY_NAME")"
+printf 'OS:       %s\n' "$(awk -F= '/^PRETTY_NAME=/ { gsub(/"/, "", $2); print $2 }' /etc/os-release)"
 printf 'Kernel:   %s\n' "$(uname -r)"
 
 # -------------------- Uptime and Load --------------------
@@ -78,7 +78,7 @@ section "DISK USAGE"
 
 df -hT -x tmpfs -x devtmpfs -x squashfs
 
-while read -r filesystem type size used available percent mountpoint; do
+while read -r filesystem _ _ _ _ percent mountpoint; do
     usage=${percent%%%}
 
     if [[ "$usage" =~ ^[0-9]+$ ]] &&

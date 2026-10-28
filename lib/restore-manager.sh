@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2153  # EXTRACT_DIR, SAMPLE_FILE and SAMPLE_SIZE are set by verify.sh and its config
 restore_archive() {
     local archive="$1"
 

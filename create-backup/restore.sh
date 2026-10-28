@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/archive-validator.sh
 source "$SCRIPT_DIR/../lib/archive-validator.sh"
 
 # -------------------- Validation --------------------

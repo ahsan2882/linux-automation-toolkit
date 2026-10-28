@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck $(git ls-files '*.sh')
+      - run: shellcheck -x $(git ls-files '*.sh')
   go:
     runs-on: ubuntu-latest
     steps:

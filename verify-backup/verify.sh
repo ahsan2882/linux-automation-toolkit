@@ -115,6 +115,7 @@ log "Archive: $ARCHIVE"
 
 WORK_DIR=""
 
+# shellcheck disable=SC2317,SC2329  # invoked via trap
 cleanup() {
     local exit_code=$?
 
