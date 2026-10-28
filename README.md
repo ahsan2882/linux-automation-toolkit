@@ -1,5 +1,7 @@
 # Linux Automation Toolkit
 
+![CI](https://github.com/ahsan2882/linux-automation-toolkit/actions/workflows/ci.yml/badge.svg)
+
 A collection of Linux administration utilities for creating and restoring backups, verifying backup artifacts, monitoring disk capacity, mounting configured drives, cleaning old files, and generating system reports. Most tools are Bash scripts; `disk-usage-alert` is a Go application. Optional systemd units automate scheduled tasks.
 
 ## Repository contents
